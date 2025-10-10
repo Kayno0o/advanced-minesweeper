@@ -3,7 +3,13 @@ class_name Game
 
 enum Difficulty {EASY, NORMAL, HARD, CUSTOM}
 
+# Preload difficulty configuration resources
+const CONFIG_EASY := preload("res://resources/difficulty_easy.tres")
+const CONFIG_NORMAL := preload("res://resources/difficulty_normal.tres")
+const CONFIG_HARD := preload("res://resources/difficulty_hard.tres")
+
 var current_difficulty: Difficulty
+var current_config: GameConfig  # GameConfig resource
 
 @onready var board: GameBoard = %Board
 
@@ -33,7 +39,7 @@ func _on_restart_game() -> void:
 	await MenuSwitcher.transition_to_node(end_screen, board_wrapper, Enum.Direction.RIGHT)
 
 ## Initializes and starts a new game with the given difficulty settings.
-## Configures grid size and bomb count based on difficulty level.
+## Configures grid size and bomb count based on difficulty level using GameConfig resources.
 ##
 ## @param difficulty: The difficulty level (EASY, NORMAL, HARD, or CUSTOM)
 func start_game(difficulty: Difficulty) -> void:
@@ -41,11 +47,22 @@ func start_game(difficulty: Difficulty) -> void:
 
 	match difficulty:
 		Difficulty.EASY:
-			board.start_game(10, 10, int(((10*10)/100.0) * 11))
+			current_config = CONFIG_EASY
 		Difficulty.NORMAL:
-			board.start_game(16, 16, int(((16*16)/100.0) * 14))
+			current_config = CONFIG_NORMAL
 		Difficulty.HARD:
-			board.start_game(24, 24, int(((24*24)/100.0) * 18))
+			current_config = CONFIG_HARD
 		Difficulty.CUSTOM:
 			# show custom difficulty screen
-			pass
+			# For now, use normal difficulty as fallback
+			current_config = CONFIG_NORMAL
+
+	# Validate configuration before starting
+	if current_config != null and current_config.is_valid():
+		board.start_game(
+			current_config.grid_width,
+			current_config.grid_height,
+			current_config.get_bomb_count()
+		)
+	else:
+		push_error("Invalid game configuration for difficulty: %s" % Difficulty.keys()[difficulty])

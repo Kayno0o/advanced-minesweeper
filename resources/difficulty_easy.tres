@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="GameConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://resources/game_config.gd" id="1_1"]
+
+[resource]
+script = ExtResource("1_1")
+grid_width = 10
+grid_height = 10
+bomb_percentage = 11.0
+difficulty_name = "Easy"
