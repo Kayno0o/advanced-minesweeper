@@ -1,6 +1,6 @@
 extends Node
 
-var transitionning = false
+var transitioning = false
 
 var root: Control
 var current_scene: Node
@@ -23,17 +23,17 @@ func switch_to_scene_from_position(scene: String, new_scene_position: Enum.Direc
 	call_deferred("_switch_to_scene_from_position", scene, new_scene_position, with_loading)
 
 func _switch_to_scene_from_position(scene: String, direction: Enum.Direction, with_loading: bool = true):
-	if transitionning:
+	if transitioning:
 		return
 
-	transitionning = true
+	transitioning = true
 
 	if not with_loading:
 		var previous_scene = current_scene
 		await load_scene_async(scene)
 		await transition_to_node(previous_scene, current_scene, direction)
 
-		transitionning = false
+		transitioning = false
 
 		return
 
@@ -52,7 +52,7 @@ func _switch_to_scene_from_position(scene: String, direction: Enum.Direction, wi
 
 	await transition_to_node(loading_screen, current_scene, direction)
 
-	transitionning = false
+	transitioning = false
 
 
 # asynchronously loads the scene and updates the loading bar
