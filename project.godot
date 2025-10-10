@@ -20,7 +20,6 @@ config/icon="res://icon.svg"
 
 Constants="*res://globals/constants.gd"
 MenuSwitcher="*res://globals/menu_switcher.gd"
-Utils="*res://globals/utils.gd"
 
 [display]
 

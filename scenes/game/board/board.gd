@@ -8,13 +8,26 @@ var bomb_count: int = 24
 @onready var fg: TileMapLayer = %Foreground
 @onready var bg: TileMapLayer = %Background
 
-var bombs: Dictionary = {}  # Use Dictionary for O(1) lookup instead of O(n) array search
-var flags: int
+var bombs: Dictionary[Vector2i, bool] = {}  # Use typed Dictionary for O(1) lookup (Godot 4.4+)
+var flags: int = 0
 
 signal win
 signal lose
 
-func start_game(new_grid_width: int, new_grid_height: int, new_bomb_count: int):
+## Starts a new game with the specified grid dimensions and bomb count.
+## Validates inputs and initializes the game board.
+##
+## @param new_grid_width: Width of the grid (must be positive)
+## @param new_grid_height: Height of the grid (must be positive)
+## @param new_bomb_count: Number of bombs to place (must be less than total cells)
+func start_game(new_grid_width: int, new_grid_height: int, new_bomb_count: int) -> void:
+	# Validate input parameters
+	assert(new_grid_width > 0, "Grid width must be positive, got: %d" % new_grid_width)
+	assert(new_grid_height > 0, "Grid height must be positive, got: %d" % new_grid_height)
+	assert(new_bomb_count >= 0, "Bomb count cannot be negative, got: %d" % new_bomb_count)
+	assert(new_bomb_count < new_grid_width * new_grid_height,
+		"Bomb count (%d) must be less than total cells (%d)" % [new_bomb_count, new_grid_width * new_grid_height])
+
 	grid_width = new_grid_width
 	grid_height = new_grid_height
 	bomb_count = new_bomb_count
@@ -35,13 +48,10 @@ func start_game(new_grid_width: int, new_grid_height: int, new_bomb_count: int):
 			cells.append(Vector2i(x, y))
 	bg.set_cells_terrain_connect(cells, 0, Constants.CELL_UNPRESSED, true)
 
-	# add bombs
+	# add bombs (optimized: shuffle and take first N elements)
+	cells.shuffle()
 	for i in range(bomb_count):
-		var rid = randi_range(0, cells.size() - 1)
-		var cell = cells[rid]
-
-		bombs[cell] = true
-		cells.remove_at(rid)
+		bombs[cells[i]] = true
 
 	cells.clear()
 
@@ -53,29 +63,32 @@ func start_game(new_grid_width: int, new_grid_height: int, new_bomb_count: int):
 	bg.scale = Vector2(ratio, ratio)
 	fg.scale = Vector2(ratio, ratio)
 
-func _input(event: InputEvent):
-	if not event is InputEventMouseButton or !event.pressed:
+func _unhandled_input(event: InputEvent) -> void: # Use _unhandled_input for better UI interaction (Godot 4.4+ best practice)
+	var mouse_event := event as InputEventMouseButton
+	if mouse_event == null or not mouse_event.pressed:
 		return
 
-	var local_position = bg.to_local(event.global_position)
+	var local_position: Vector2 = bg.to_local(mouse_event.global_position)
 	var cell: Vector2i = bg.local_to_map(local_position)
 
-	if event.button_index == MOUSE_BUTTON_MIDDLE:
-		middle_click(cell)
+	match mouse_event.button_index:
+		MOUSE_BUTTON_LEFT:
+			left_click(cell)
+		MOUSE_BUTTON_RIGHT:
+			right_click(cell)
+		MOUSE_BUTTON_MIDDLE:
+			middle_click(cell)
+
+func is_valid_cell(cell: Vector2i) -> bool:
+	return cell.x >= 0 and cell.x < grid_width and cell.y >= 0 and cell.y < grid_height
+
+func left_click(cell: Vector2i) -> void:
+	if not is_valid_cell(cell):
 		return
 
-	if event.button_index == MOUSE_BUTTON_LEFT:
-		left_click(cell)
-		return
-	
-	if event.button_index == MOUSE_BUTTON_RIGHT:
-		right_click(cell)
-		return
-
-func left_click(cell: Vector2i):
 	var fg_data: TileData = fg.get_cell_tile_data(cell)
 
-	var is_flag = fg_data.get_custom_data("is_flag") if fg_data != null else false
+	var is_flag: bool = fg_data.get_custom_data("is_flag") if fg_data != null else false
 	if is_flag:
 		return
 
@@ -89,15 +102,18 @@ func left_click(cell: Vector2i):
 		explore(cell)
 		check_and_handle_win()
 
-func middle_click(cell: Vector2i):
+func middle_click(cell: Vector2i) -> void:
+	if not is_valid_cell(cell):
+		return
+
 	var fg_data: TileData = fg.get_cell_tile_data(cell)
 
 	var number: int = fg_data.get_custom_data("number") if fg_data != null else 0
 	if number > 0:
-		var bomb_nb = has_bomb_neighbour(get_surrounding_cells(cell))
-		var correct_flag_nb = get_surrounding_cells(cell).reduce(
-			func(acc: int, neighbour: Vector2i):
-				var neighbour_fg_data = fg.get_cell_tile_data(neighbour)
+		var bomb_nb: int = has_bomb_neighbour(get_surrounding_cells(cell))
+		var correct_flag_nb: int = get_surrounding_cells(cell).reduce(
+			func(acc: int, neighbour: Vector2i) -> int:
+				var neighbour_fg_data: TileData = fg.get_cell_tile_data(neighbour)
 				if neighbour_fg_data != null and neighbour_fg_data.get_custom_data("is_flag") and is_bomb(neighbour):
 					acc += 1
 				return acc,
@@ -106,12 +122,15 @@ func middle_click(cell: Vector2i):
 
 		if bomb_nb == correct_flag_nb:
 			for neighbour in get_surrounding_cells(cell):
-				var neighbour_fg_data = fg.get_cell_tile_data(neighbour)
+				var neighbour_fg_data: TileData = fg.get_cell_tile_data(neighbour)
 				if neighbour_fg_data == null:
 					explore(neighbour)
 			check_and_handle_win()
 
-func right_click(cell: Vector2i):
+func right_click(cell: Vector2i) -> void:
+	if not is_valid_cell(cell):
+		return
+
 	var bg_data: TileData = bg.get_cell_tile_data(cell)
 	var fg_data: TileData = fg.get_cell_tile_data(cell)
 
@@ -131,14 +150,19 @@ func right_click(cell: Vector2i):
 func is_bomb(cell: Vector2i) -> bool:
 	return bombs.has(cell)
 
-func explore(cell_to_explore: Vector2i):
+## Explores a cell and recursively reveals adjacent empty cells.
+## If the cell contains a number, only that cell is revealed.
+## Uses BFS algorithm for efficient exploration.
+##
+## @param cell_to_explore: The grid position to start exploring from
+func explore(cell_to_explore: Vector2i) -> void:
 	var cells_queue: Array[Vector2i] = [cell_to_explore]
 
 	while cells_queue.size():
-		var cell = cells_queue[0]
+		var cell := cells_queue[0]
 		cells_queue.remove_at(0)
 
-		var cell_data = bg.get_cell_tile_data(cell)
+		var cell_data := bg.get_cell_tile_data(cell)
 		if cell_data == null:
 			continue
 		if cell_data.get_custom_data("is_pressed"):
@@ -146,14 +170,19 @@ func explore(cell_to_explore: Vector2i):
 
 		bg.set_cells_terrain_connect([cell], 0, Constants.CELL_PRESSED, true)
 
-		var surrounding_cells = get_surrounding_cells(cell)
-		var neighbor_bombs = has_bomb_neighbour(surrounding_cells)
+		var surrounding_cells := get_surrounding_cells(cell)
+		var neighbor_bombs := has_bomb_neighbour(surrounding_cells)
 		if neighbor_bombs:
 			fg.set_cell(cell, 0, Vector2i(neighbor_bombs - 1, 0))
 			continue
 
 		cells_queue.append_array(surrounding_cells)
 
+## Returns all valid neighboring cells around the given cell.
+## Uses the 8-direction neighbor pattern defined in Constants.
+##
+## @param cell: The cell to get neighbors for
+## @returns: Array of valid neighboring cell positions
 func get_surrounding_cells(cell: Vector2i) -> Array[Vector2i]:
 	return Constants.NEIGHBOR_DIRECTIONS.reduce(
 		func(acc: Array[Vector2i], dir: Vector2i):
@@ -174,37 +203,37 @@ func has_bomb_neighbour(surrounding_cells: Array[Vector2i]) -> int:
 func has_flag_neighbour(surrounding_cells: Array[Vector2i]) -> int:
 	var number: int = 0
 	for neighbour in surrounding_cells:
-		var fg_data = fg.get_cell_tile_data(neighbour)
+		var fg_data: TileData = fg.get_cell_tile_data(neighbour)
 		if fg_data != null and fg_data.get_custom_data("is_flag"):
 			number += 1
 	return number
 
-func handle_lose():
+func handle_lose() -> void:
 	lose.emit()
 
-func check_and_handle_win():
+func check_and_handle_win() -> void:
 	if is_win():
 		win.emit()
 
 func is_win() -> bool:
 	for y in range(grid_height):
 		for x in range(grid_width):
-			var cell = Vector2i(x, y)
+			var cell: Vector2i = Vector2i(x, y)
 
-			var bg_data = bg.get_cell_tile_data(cell)
-			var fg_data = fg.get_cell_tile_data(cell)
+			var bg_data: TileData = bg.get_cell_tile_data(cell)
+			var fg_data: TileData = fg.get_cell_tile_data(cell)
 
 			if bg_data == null:
 				return false
 
-			var is_bomb_cell = is_bomb(cell)
-			var is_pressed = bg_data.get_custom_data("is_pressed")
+			var is_bomb_cell: bool = is_bomb(cell)
+			var is_pressed: bool = bg_data.get_custom_data("is_pressed")
 
 			if is_bomb_cell:
 				if fg_data == null:
 					continue
 
-				var is_flag = fg_data.get_custom_data("is_flag") if fg_data != null else false
+				var is_flag: bool = fg_data.get_custom_data("is_flag") if fg_data != null else false
 				if not is_flag:
 					return false
 				

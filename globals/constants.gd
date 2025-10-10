@@ -1,5 +1,4 @@
 extends Node
-class_name Constants
 
 # Animation timings
 const TRANSITION_DURATION_OUT := 0.5
