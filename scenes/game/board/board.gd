@@ -79,9 +79,9 @@ func left_click(cell: Vector2i):
 	if is_flag:
 		return
 
-	var is_bomb: bool = is_bomb(cell)
+	var is_bomb_cell: bool = is_bomb(cell)
 
-	if is_bomb:
+	if is_bomb_cell:
 		bg.set_cells_terrain_connect([cell], 0, Constants.CELL_PRESSED, true)
 		fg.set_cell(cell, 0, Constants.TILE_BOMB)
 		handle_lose()
